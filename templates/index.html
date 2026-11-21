@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>AI Interview Coach</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+<div class="app">
+  <div class="eyebrow">Mock Interview · Fresher Track</div>
+  <h1>AI Interview Coach</h1>
+  <div class="sub">Answer each question honestly — the Python backend scores it and suggests fixes.</div>
+
+  <div class="rail" id="rail"></div>
+
+  <div class="layout">
+    <div class="card" id="qCard">
+      <div class="qnum" id="qnum"></div>
+      <p class="qtext" id="qtext"></p>
+      <textarea id="answer" placeholder="Type your answer here..."></textarea>
+      <div class="actions"><button onclick="submitAnswer()">Submit Answer</button></div>
+      <div class="feedback" id="feedback"></div>
+    </div>
+
+    <div class="card gauge-wrap">
+      <div class="gauge">
+        <svg width="150" height="150">
+          <circle cx="75" cy="75" r="62" stroke="#3A4658" stroke-width="10" fill="none"/>
+          <circle id="gaugeArc" cx="75" cy="75" r="62" stroke="#E8B75E" stroke-width="10" fill="none"
+                  stroke-dasharray="389" stroke-dashoffset="389" stroke-linecap="round"/>
+        </svg>
+        <div class="gauge-num"><span class="n" id="gaugeNum">0.0</span><span class="l">AVG / 10</span></div>
+      </div>
+      <div class="gauge-label">Confidence Meter</div>
+      <div class="history" id="history"></div>
+    </div>
+  </div>
+
+  <div class="card final" id="finalCard">
+    <div class="eyebrow" style="text-align:center;">Session Complete</div>
+    <div class="n" id="finalScore">0.0</div>
+    <div class="sub" style="margin-bottom:0;">out of 10</div>
+    <div class="verdict" id="verdictText"></div>
+  </div>
+</div>
+
+<script>
+const questions = {{ questions | tojson }};
+let current = 0, total = 0, history = [];
+
+const rail = document.getElementById('rail');
+questions.forEach((_, i) => {
+  const d = document.createElement('div');
+  d.className = 'dot' + (i === 0 ? ' current' : '');
+  d.id = 'dot' + i;
+  rail.appendChild(d);
+});
+renderQuestion();
+
+function renderQuestion(){
+  const q = questions[current];
+  document.getElementById('qnum').textContent = `Q${current+1} / 0${questions.length}`;
+  document.getElementById('qtext').innerHTML = `${q.text}<span class="qtag">${q.category}</span>`;
+  document.getElementById('answer').value = '';
+  document.getElementById('feedback').classList.remove('show');
+}
+
+async function submitAnswer(){
+  const answer = document.getElementById('answer').value.trim();
+  if(!answer){ alert('Please type an answer.'); return; }
+
+  // Real call to the Flask/Python backend (KeywordEvaluator class)
+  const res = await fetch('/evaluate', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({index: current, answer: answer})
+  });
+  const {score, feedback} = await res.json();
+
+  total += score;
+  history.push({q: questions[current].text, score});
+
+  const fbEl = document.getElementById('feedback');
+  fbEl.innerHTML = `<b>Score: ${score.toFixed(1)}/10</b><br>${feedback}`;
+  fbEl.classList.add('show');
+
+  document.getElementById('dot'+current).classList.add('done');
+  document.getElementById('dot'+current).classList.remove('current');
+
+  const avg = total / history.length;
+  document.getElementById('gaugeNum').textContent = avg.toFixed(1);
+  document.getElementById('gaugeArc').style.strokeDashoffset = 389 - (389 * (avg/10));
+
+  document.getElementById('history').innerHTML =
+    history.map((h,i)=>`<div><span>Q${i+1}</span><span>${h.score.toFixed(1)}</span></div>`).join('');
+
+  setTimeout(() => {
+    current++;
+    if(current < questions.length){
+      document.getElementById('dot'+current).classList.add('current');
+      renderQuestion();
+    } else {
+      document.getElementById('qCard').style.display = 'none';
+      document.querySelector('.layout').style.gridTemplateColumns = '1fr';
+      document.getElementById('finalCard').classList.add('show');
+      document.getElementById('finalScore').textContent = avg.toFixed(1);
+      const v = avg>=8 ? "Excellent! You're well prepared." :
+                avg>=5 ? "Decent — revise weak areas before the real interview." :
+                "Needs more practice. Focus on key concepts and fuller answers.";
+      document.getElementById('verdictText').textContent = v;
+    }
+  }, 1400);
+}
+</script>
+</body>
+</html>
